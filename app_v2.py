@@ -7,6 +7,13 @@ import itertools
 from collections import Counter
 from collections import deque
 
+'''
+Since cv2.VideoCapture(0, CAP_MSMF) takes a REALLY LONG WHILE to start up (roughly 20s), I've decided to disable the HW Transforms.
+This MUST be put before import cv2
+'''
+import os
+os.environ["OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS"] = "0"
+
 import cv2 as cv
 import numpy as np
 import mediapipe as mp
@@ -15,14 +22,17 @@ from utils import CvFpsCalc
 from model import KeyPointClassifier
 from model import PointHistoryClassifier
 
-import threading
 import time
 
+
+
 import pandas
-import schedule
-import asyncio
 
 import socket
+
+# Get full file-path
+full_path = os.path.realpath(__file__)
+dir_path = os.path.dirname(full_path)
 
 # Defining socket attributes
 UDP_IP = "127.0.0.1"
@@ -32,6 +42,8 @@ UDP_PORT = 27001
 # We will only send data/messages to the specified IP and PORT
 # Lines 33, 216 and 237 (133 is not needed much)
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+
 
 
 def get_args():
@@ -75,7 +87,11 @@ def main():
     use_brect = True
 
     # Camera preparation ###############################################################
-    cap = cv.VideoCapture(cap_device)
+    if (cap_device == 0):
+        cap = cv.VideoCapture(cap_device)
+    else:
+        print("No cameras detected")
+        return
     cap.set(cv.CAP_PROP_FRAME_WIDTH, cap_width)
     cap.set(cv.CAP_PROP_FRAME_HEIGHT, cap_height)
 
@@ -93,7 +109,8 @@ def main():
     # point_history_classifier = PointHistoryClassifier()
 
     # Read labels ###########################################################
-    with open('model/keypoint_classifier/keypoint_classifier_label.csv',
+    # with open('./model/keypoint_classifier/keypoint_classifier_label.csv',
+    with open(os.path.join(dir_path, "model/keypoint_classifier/keypoint_classifier_label.csv"),
               encoding='utf-8-sig') as f:
         keypoint_classifier_labels = csv.reader(f)
         keypoint_classifier_labels = [
@@ -126,11 +143,13 @@ def main():
     while cap.isOpened():
         fps = cvFpsCalc.get()
 
-        # Process Key (ESC: end) #################################################
+        # Process Key (ESC: end - will be changed to 'm') #################################################
         key = cv.waitKey(10)
         # waitKey is a must have since without it, the OpenCV app would not work
-        if key == 27:  # ESC
+        if key == 109:  # 'm' key
             sock.close()
+            cap.release()
+            cv.destroyAllWindows()
             break
         # number, mode = select_mode(key, mode)
         # number, mode = select_mode_(key, mode, number)
@@ -142,6 +161,9 @@ def main():
             break
         image = cv.flip(image, 1)  # Mirror display
         debug_image = copy.deepcopy(image)
+        # Add "This app can be turned off using the 'M' key" text
+        debug_image = cv.putText(debug_image, "This app can be turned off using the 'M' key", (10, 60),
+                                 cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv.LINE_AA)
 
         # Detection implementation #############################################################
         image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
@@ -216,6 +238,8 @@ def main():
                 if (keypoint_classifier_labels[hand_sign_id] != past_label):
                     past_label = label_print(keypoint_classifier_labels[hand_sign_id])
                 # send_data(sock, UDP_IP, UDP_PORT, keypoint_classifier_labels[hand_sign_id])
+
+                ### Send data to Unity using UDP Socket
                 send_data(sock, UDP_IP, UDP_PORT, keypoint_classifier_labels[hand_sign_id], debug_var = False)
         # else:
         #     point_history.append([0, 0])
@@ -249,10 +273,10 @@ def select_mode(key, mode):
         train_number = key - 48
     if key == 110:  # n
         mode = 0
-    if key == 107:  # k
-        mode = 1
-    if key == 104:  # h
-        mode = 2
+    # if key == 107:  # k
+    #     mode = 1
+    # if key == 104:  # h
+    #     mode = 2
     return train_number, mode
 
 
@@ -263,12 +287,13 @@ def select_mode_(key, mode, number):
         number = key - 48
     if key == 110:  # n
         mode = 0
-        csvData = pandas.read_csv("./model/keypoint_classifier/keypoint.csv")
+        # Count the number of data/parameter lines of each label
+        csvData = pandas.read_csv(os.path.join(dir_path, "model/keypoint_classifier/keypoint.csv"))
         print(csvData.iloc[0:, 0].groupby(csvData.iloc[0:, 0]).count())
-    if key == 107:  # k
-        mode = 1
-    if key == 104:  # h
-        mode = 2
+    # if key == 107:  # k
+    #     mode = 1
+    # if key == 104:  # h
+    #     mode = 2
     return number, mode
 
 
@@ -335,27 +360,27 @@ def pre_process_landmark(landmark_list):
     return temp_landmark_list
 
 
-def pre_process_point_history(image, point_history):
-    image_width, image_height = image.shape[1], image.shape[0]
-
-    temp_point_history = copy.deepcopy(point_history)
-
-    # Convert to relative coordinates
-    base_x, base_y = 0, 0
-    for index, point in enumerate(temp_point_history):
-        if index == 0:
-            base_x, base_y = point[0], point[1]
-
-        temp_point_history[index][0] = (temp_point_history[index][0] -
-                                        base_x) / image_width
-        temp_point_history[index][1] = (temp_point_history[index][1] -
-                                        base_y) / image_height
-
-    # Convert to a one-dimensional list
-    temp_point_history = list(
-        itertools.chain.from_iterable(temp_point_history))
-
-    return temp_point_history
+# def pre_process_point_history(image, point_history):
+#     image_width, image_height = image.shape[1], image.shape[0]
+#
+#     temp_point_history = copy.deepcopy(point_history)
+#
+#     # Convert to relative coordinates
+#     base_x, base_y = 0, 0
+#     for index, point in enumerate(temp_point_history):
+#         if index == 0:
+#             base_x, base_y = point[0], point[1]
+#
+#         temp_point_history[index][0] = (temp_point_history[index][0] -
+#                                         base_x) / image_width
+#         temp_point_history[index][1] = (temp_point_history[index][1] -
+#                                         base_y) / image_height
+#
+#     # Convert to a one-dimensional list
+#     temp_point_history = list(
+#         itertools.chain.from_iterable(temp_point_history))
+#
+#     return temp_point_history
 
 
 def logging_csv(number, mode, landmark_list, point_history_list):
@@ -363,29 +388,34 @@ def logging_csv(number, mode, landmark_list, point_history_list):
     time.sleep(.1)
     if mode == 0:
         pass
-    if mode == 1 and (0 <= number <= 9):
-        csv_path = 'model/keypoint_classifier/keypoint.csv'
-        with open(csv_path, 'a', newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow([number, *landmark_list])
-    if mode == 2 and (0 <= number <= 9):
-        csv_path = 'model/point_history_classifier/point_history.csv'
-        with open(csv_path, 'a', newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow([number, *point_history_list])
+    # if mode == 1 and (0 <= number <= 9):
+    #     csv_path = './model/keypoint_classifier/keypoint.csv'
+    #     with open(csv_path, 'a', newline="") as f:
+    #         writer = csv.writer(f)
+    #         writer.writerow([number, *landmark_list])
+    # if mode == 2 and (0 <= number <= 9):
+    #     csv_path = './model/point_history_classifier/point_history.csv'
+    #     with open(csv_path, 'a', newline="") as f:
+    #         writer = csv.writer(f)
+    #         writer.writerow([number, *point_history_list])
     return
 
-
+##############
 # Homemade backup contains:
 # The ones without suffixes are the 4 directional hand ones, they work
 # The current one somehow works...? Might make a backup later
 
+# final file contains:
+# 8-direction hand recognition model (keras and tflite, we're using the tflite, which is converted from keras)
+# CSV file with quite a lot of parameters (mostly the IDLE gesture since it got conflicted with a lot of the diagonal gestures)
+###############
+
 # Added new thread for logging
-def logging_csv_thread(number, mode):
-    time.sleep(1)
-    print("Current mode: ", mode)
-    print("Current number: ", number)
-    print("-------------------------")
+# def logging_csv_thread(number, mode):
+#     time.sleep(1)
+#     print("Current mode: ", mode)
+#     print("Current number: ", number)
+#     print("-------------------------")
 
 
 def draw_landmarks(image, landmark_point):
@@ -628,7 +658,7 @@ def draw_info_text_(image, brect, handedness, hand_sign_text, ):
 #
 #     return image
 
-
+# This is for the hand landmark logging (into csv file), Logging been disabled in this app_v2 file
 def draw_info(image, fps, mode, number):
     cv.putText(image, "FPS:" + str(fps), (10, 30), cv.FONT_HERSHEY_SIMPLEX,
                1.0, (0, 0, 0), 4, cv.LINE_AA)

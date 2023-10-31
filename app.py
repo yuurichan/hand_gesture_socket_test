@@ -7,6 +7,13 @@ import itertools
 from collections import Counter
 from collections import deque
 
+'''
+Since cv2.VideoCapture(0, CAP_MSMF) takes a REALLY LONG WHILE to start up (roughly 20s), I've decided to disable the HW Transforms.
+This MUST be put before import cv2
+'''
+import os
+os.environ["OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS"] = "0"
+
 import cv2 as cv
 import numpy as np
 import mediapipe as mp
