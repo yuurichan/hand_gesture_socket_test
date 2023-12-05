@@ -236,7 +236,9 @@ def select_mode_(key, mode, number):
     if key == 110:  # n
         mode = 0
         csvData = pandas.read_csv("./model/keypoint_classifier/keypoint.csv")
+        csvData_ = pandas.read_csv("./model/keypoint_classifier/keypoint_test.csv")
         print(csvData.iloc[0:, 0].groupby(csvData.iloc[0:, 0]).count())
+        print(csvData_.iloc[0:, 0].groupby(csvData_.iloc[0:, 0]).count())
     if key == 107:  # k
         mode = 1
     if key == 104:  # h
@@ -336,7 +338,7 @@ def logging_csv(number, mode, landmark_list, point_history_list):
     if mode == 0:
         pass
     if mode == 1 and (0 <= number <= 9):
-        csv_path = 'model/keypoint_classifier/keypoint.csv'
+        csv_path = 'model/keypoint_classifier/keypoint_test.csv'
         with open(csv_path, 'a', newline="") as f:
             writer = csv.writer(f)
             writer.writerow([number, *landmark_list])

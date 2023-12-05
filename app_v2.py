@@ -44,8 +44,6 @@ UDP_PORT = 27001
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 
-
-
 def get_args():
     parser = argparse.ArgumentParser()
 
